@@ -1,0 +1,45 @@
+name: Build Tauri App
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # hanya akan build saat kamu membuat tag seperti v1.0.0
+  workflow_dispatch:  # bisa dijalankan manual dari GitHub UI
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        platform: [windows-latest]  # Hanya Windows, bisa ditambah linux, macos
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        run: yarn install
+
+      - name: Install Rust dependencies and Tauri CLI
+        run: |
+          cargo install tauri-cli --force
+          rustup target add x86_64-pc-windows-msvc
+
+      - name: Build Tauri app
+        run: yarn tauri build
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: tauri-windows
+          path: src-tauri/target/release/bundle/windows
