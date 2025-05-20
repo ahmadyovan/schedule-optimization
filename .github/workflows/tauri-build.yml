@@ -8,11 +8,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        platform: [windows-latest]
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v3
@@ -37,10 +33,11 @@ jobs:
         run: yarn tauri build
 
       - name: Check output (debug)
-        run: dir src-tauri\\target\\release\\bundle
+        run: dir src-tauri\\target\\release\\bundle /s
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: tauri-windows
-          path: src-tauri/target/release/bundle/windows/*.exe
+          path: src-tauri/target/release/bundle/windows
+          if-no-files-found: warn
