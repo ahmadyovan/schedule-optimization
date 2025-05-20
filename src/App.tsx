@@ -110,7 +110,7 @@ const App = () => {
 
 		const notification = document.createElement("div");
 		notification.className = `bg-red-500 text-white px-4 py-2 rounded shadow-md mb-2`;
-		notification.textContent = message;
+		notification.textContent = type + ' ' + message;
 		container.appendChild(notification);
 
 		setTimeout(() => {
