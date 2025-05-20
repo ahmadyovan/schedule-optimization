@@ -3,14 +3,14 @@ name: Build Tauri App
 on:
   push:
     tags:
-      - 'v*.*.*'  # hanya akan build saat kamu membuat tag seperti v1.0.0
-  workflow_dispatch:  # bisa dijalankan manual dari GitHub UI
+      - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
   build:
     strategy:
       matrix:
-        platform: [windows-latest]  # Hanya Windows, bisa ditambah linux, macos
+        platform: [windows-latest]
 
     runs-on: ${{ matrix.platform }}
 
@@ -27,19 +27,20 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: yarn install
 
-      - name: Install Rust dependencies and Tauri CLI
-        run: |
-          cargo install tauri-cli --force
-          rustup target add x86_64-pc-windows-msvc
+      - name: Install NSIS for Windows bundling
+        run: choco install nsis
 
       - name: Build Tauri app
         run: yarn tauri build
+
+      - name: Check output (debug)
+        run: dir src-tauri\\target\\release\\bundle
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: tauri-windows
-          path: src-tauri/target/release/bundle/windows
+          path: src-tauri/target/release/bundle/windows/*.exe
