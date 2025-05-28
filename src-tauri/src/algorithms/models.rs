@@ -28,7 +28,7 @@ pub struct OptimizationProgress {
         pub current_run: Option<usize>,          // Menjadi opsional
         pub total_runs: Option<usize>,           // Menjadi opsional
         pub is_finished: bool,
-        pub conflicts: ConflictInfo,
+        // pub conflicts: ConflictInfo,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -44,13 +44,6 @@ pub struct TimePreferenceRequest {
     pub kamisMalam: bool,
     pub jumatPagi: bool,
     pub jumatMalam: bool,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct OptimizationRequest {
-    pub courses: Vec<CourseRequest>,
-    pub parameters: PsoParameters,
-    pub time_preferences: Vec<TimePreferenceRequest>,
 }
 
 #[derive(Debug, Serialize, Clone)]

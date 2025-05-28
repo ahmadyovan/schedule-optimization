@@ -1,0 +1,11 @@
+{
+  "permission": [
+    {
+      "identifier": "stop-pso",
+      "description": "Izin untuk menjalankan stop proses optimasi PSO",
+      "commands": {
+        "allow": ["stop_pso"]
+      }
+    }
+  ]
+}

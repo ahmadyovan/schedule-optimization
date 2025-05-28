@@ -1,14 +1,40 @@
 import { useEffect, useState } from "react";
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from "@tauri-apps/api/core";
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import "./App.css";
 
-type ConflictInfo = {
-  conflicts_list: any[]; // Ganti `any` dengan tipe yang sesuai jika kamu tahu struktur konflik
-  group_conflicts: any[];
-  preference_conflicts: any[];
-  total_conflicts: number;
+// type ConflictInfo = {
+//   conflicts_list: any[]; // Ganti `any` dengan tipe yang sesuai jika kamu tahu struktur konflik
+//   group_conflicts: any[];
+//   preference_conflicts: any[];
+//   total_conflicts: number;
+// };
+
+type ScheduleEntry = {
+  hari: number;
+  id_dosen: number;
+  id_jadwal: number;
+  id_kelas: number;
+  id_matkul: number;
+  id_waktu: number;
+  jam_akhir: number;
+  jam_mulai: number;
+  prodi: number;
+  ruangan: number;
+  semester: number;
+  sks: number;
 };
+
+interface OptimizationResult {
+  all_best_fitness: number[];
+  conflicts: Record<string, any>; // Sesuaikan kalau tahu strukturnya
+  fitness: number;
+  schedule: ScheduleEntry[];
+  success: boolean;
+}
+
 
 
 type ElapsedTime = {
@@ -19,8 +45,7 @@ type ElapsedTime = {
 export type OptimizationProgress = {
   all_best_fitness: number | null;
   best_fitness: number;
-  conflicts: ConflictInfo;
-  current_run: number | null;
+  current_run: number;
   elapsed_time: ElapsedTime;
   is_finished: boolean;
   iteration: number;
@@ -34,6 +59,7 @@ const App = () => {
   	const [preferenceFileName, setPreferenceFileName] = useState<string | null>(null);
 	const [isOpen, setIsOpen] = useState(false);
 	const [isRunning, setIsRunning] = useState(false);
+	const [scheduleData, setScheduleData] = useState<ScheduleEntry[]>([]);
 	const [params, setParams] = useState({
 		swarm_size: 30,
 		max_iterations: 100,
@@ -46,13 +72,7 @@ const App = () => {
 	const [progress, setProgress] = useState<OptimizationProgress>({
 		all_best_fitness: null,
 		best_fitness: 0,
-		conflicts: {
-			conflicts_list: [],
-			group_conflicts: [],
-			preference_conflicts: [],
-			total_conflicts: 0,
-		},
-		current_run: null,
+		current_run: 1,
 		elapsed_time: {
 			secs: 0,
 			nanos: 0,
@@ -72,14 +92,8 @@ const App = () => {
 		setProgress({
 			iteration: data.iteration,
 			best_fitness: data.best_fitness,
-			conflicts: {
-				conflicts_list: data.conflicts.conflicts_list || [],
-				group_conflicts: data.conflicts.group_conflicts || [],
-				preference_conflicts: data.conflicts.preference_conflicts || [],
-				total_conflicts: data.conflicts.total_conflicts ?? 0,
-			},
 			all_best_fitness: data.all_best_fitness ?? null,
-			current_run: data.current_run ?? null,
+			current_run: data.current_run,
 			elapsed_time: {
 				secs: data.elapsed_time?.secs ?? 0,
 				nanos: data.elapsed_time?.nanos ?? 0,
@@ -118,6 +132,75 @@ const App = () => {
 		}, 10000);
 	};
 
+	const scheduleToCsv = (data: any[]) => {
+		if (!data || data.length === 0) return "";
+		const headers = Object.keys(data[0]);
+		const csvRows = [];
+		csvRows.push(headers.join(","));
+		for (const row of data) {
+			const values = headers.map(header => {
+			const val = row[header] ?? "";
+			const escaped = String(val).replace(/"/g, '""');
+			return `"${escaped}"`;
+			});
+			csvRows.push(values.join(","));
+		}
+		return csvRows.join("\n");
+	};
+
+	const onSaveClick = async (scheduleData: any[]) => {
+		if (!scheduleData || scheduleData.length === 0) {
+			alert("Schedule data belum tersedia");
+			return;
+		}
+
+		try {
+			const filePath = await save({
+			title: "Save your schedule CSV",
+			defaultPath: "schedule.csv",
+			filters: [
+				{
+				name: "CSV File",
+				extensions: ["csv"]
+				}
+			]
+			});
+
+			if (!filePath) {
+			alert("Save file dibatalkan");
+			return;
+			}
+
+			const csvString = scheduleToCsv(scheduleData);
+
+			// tulis file CSV ke path yang dipilih
+			await writeTextFile(filePath, csvString);
+
+			alert("File berhasil disimpan di: " + filePath);
+		} catch (error) {
+			alert("Gagal menyimpan file: " + String(error));
+		}
+	};
+
+	const handleStop = async () => {
+		try {
+		await invoke("stop_pso");
+		console.log("Proses PSO dihentikan.");
+		} catch (error) {
+		console.error("Gagal menghentikan proses:", error);
+		}
+	};
+
+	function formatElapsedTime(time?: ElapsedTime | null): string {
+		if (!time) return 'Belum tersedia';
+
+		const totalSeconds = time.secs + time.nanos / 1_000_000_000;
+		const minutes = Math.floor(totalSeconds / 60);
+		const seconds = (totalSeconds % 60).toFixed(2);
+
+		return `${minutes} menit ${seconds} detik`;
+	}
+
 	const runOptimization = async () => {
 		if (!courseData) return showNotification("Please upload course data first", "error");
 		if (!preferenceData) return showNotification("Please upload time preferences", "warning");
@@ -130,7 +213,8 @@ const App = () => {
 				preferenceCsv: preferenceData,
 				params: params,
 			});
-			console.log(result);
+			const typedResult = result as OptimizationResult;
+   			setScheduleData(typedResult.schedule);
 			showNotification("Optimization completed!", "success");
 			// setIsRunning(false)
 		} catch (err) {
@@ -204,22 +288,22 @@ const App = () => {
           <div className="bg-white rounded-xl shadow-lg min-w-xl max-w-1/2 w-full p-6">
             <h2 className="text-lg text-center font-semibold mb-4">Proses</h2>
 			<div className="flex flex-col gap-3">
-				<div className="grid grid-cols-[2fr_1fr_2fr]">
-					<div>
+				<div className="grid grid-cols-[16fr_1fr_4fr] gap-3 w-fit">
+					<div className="flex flex-col items-start">
 						<h3>jumlah partikel</h3>
 						<h3>jumlah iterasi</h3>
 						<h3>inertia weight</h3>
 						<h3>cognitive weight</h3>
 						<h3>social weight</h3>
 					</div>
-					<div>
+					<div className="">
 						<p>:</p>
 						<p>:</p>
 						<p>:</p>
 						<p>:</p>
 						<p>:</p>
 					</div>
-					<div>
+					<div className="">
 						<p>{params.swarm_size}</p>
 						<p>{params.max_iterations}</p>
 						<p>{params.inertia_weight}</p>
@@ -227,43 +311,41 @@ const App = () => {
 						<p>{params.social_weight}</p>
 					</div>
 				</div>
-				<div className="grid grid-cols-[2fr_1fr_2fr]">
-					<div>
+
+				<div className="grid grid-cols-[8.5fr_1fr_10fr] gap-3 w-fit">
+					<div className="flex flex-col items-start">
 						<h3>iterasi saat ini</h3>
 						<h3>global best fitness</h3>
-						<h3>jumlah konflik</h3>
 						<h3>waktu</h3>
-						<h3>jumlah pengujian</h3>
+						<h3>pengujian ke </h3>
 					</div>
-					<div>
-						<p>:</p>
+					<div className="">
 						<p>:</p>
 						<p>:</p>
 						<p>:</p>
 						<p>:</p>
 					</div>
-					<div>
+					<div className="flex flex-col items-start">
 						<p>{progress.iteration}</p>
 						<p>{progress.best_fitness}</p>
-						<p>{progress.conflicts.total_conflicts}</p>
-						<p>
-						{progress.elapsed_time
-							? (() => {
-								const totalSeconds =
-								progress.elapsed_time.secs + progress.elapsed_time.nanos / 1_000_000_000;
-								const minutes = Math.floor(totalSeconds / 60);
-								const seconds = (totalSeconds % 60).toFixed(2);
-								return `${minutes} menit ${seconds} detik`;
-							})()
-							: 'Belum tersedia'}
-						</p>
-						<p>{progress.current_run? progress.current_run + 1 : 0}</p>
+						<p className="">{formatElapsedTime(progress.elapsed_time)}</p>
+						<p>{progress.current_run + 1}</p>
 					</div>
+				</div>
+				<div>
+					<h3>global best fitness pada setiap percobaan</h3>
+					<p>
+					{Array.isArray(progress.all_best_fitness) 
+						? progress.all_best_fitness.join(", ") 
+						: progress.all_best_fitness ?? ""}
+					</p>
 				</div>
 			</div>
             <div className="flex justify-end pt-10">
-				<button onClick={() => {runOptimization(); setIsOpen(false)}}>lagi</button>
-				<button onClick={() => setIsRunning(false)}>Tutup</button>
+				<button onClick={() => onSaveClick(scheduleData)}>simpan</button>
+				<button onClick={() => {setIsOpen(true); setIsRunning(false)}}>mulai lagi</button>
+				<button onClick={() => handleStop()}>Berhenti</button>
+				<button onClick={() => setIsRunning(false)}>kembali</button>
             </div>
           </div>
         </div>

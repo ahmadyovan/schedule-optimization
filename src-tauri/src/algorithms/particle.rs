@@ -6,6 +6,7 @@ pub struct Particle {
     pub velocity: Vec<f32>,
     pub pbest_position: Vec<f32>,
     pub pbest_fitness: f32,
+    pub fitness: f32,
 }
 
 impl Particle {
@@ -34,14 +35,9 @@ impl Particle {
             velocity,
             pbest_position: position,
             pbest_fitness: f32::INFINITY,
+            fitness: f32::INFINITY,
         }
     }
-
-    pub fn round_to_n_digits(&mut self, value: f32, digits: u32) -> f32 {
-        let multiplier = 10f32.powi(digits as i32);
-        (value * multiplier).round() / multiplier
-    }
-    
 
     pub fn update_velocity(
         &mut self,

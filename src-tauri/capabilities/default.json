@@ -5,6 +5,10 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "dialog:default",
+    "process-pso",
+    "fs:allow-write-text-file",
+    "stop-pso"
   ]
 }

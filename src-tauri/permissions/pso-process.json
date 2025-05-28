@@ -1,0 +1,11 @@
+{
+  "permission": [
+    {
+      "identifier": "process-pso",
+      "description": "Izin untuk menjalankan proses optimasi PSO",
+      "commands": {
+        "allow": ["process_pso"]
+      }
+    }
+  ]
+}

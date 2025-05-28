@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 use std::time::Instant;
+use rayon::prelude::*;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+
 
 use tauri::{Emitter, Window};
 
@@ -12,8 +15,7 @@ use super::models::{
     OptimizedCourse, 
     ConflictInfo,
     OptimizationProgress,
-    Status
-};  
+};   
 
 
 
@@ -24,6 +26,7 @@ pub struct PSO {
     parameters: PsoParameters,
     courses: Vec<CourseRequest>,
     fitness_calculator: FitnessCalculator,
+    best_conflict_info: Option<ConflictInfo>, // Tambahan baru
 }
 
 impl PSO {
@@ -32,17 +35,13 @@ impl PSO {
         time_preferences: Vec<TimePreferenceRequest>,
         parameters: PsoParameters,
     ) -> Self {
-        // Each course requires 3 values (day, time slot, room)
         let dimension = courses.len() * 2;
-        
-        // Create particles based on swarm size from parameters
         let particles = (0..parameters.swarm_size)
             .map(|_| Particle::new(dimension))
             .collect::<Vec<_>>();
-        
-        // Create fitness calculator
+
         let fitness_calculator = FitnessCalculator::new(time_preferences);
-        
+
         PSO {
             particles,
             global_best_position: vec![0.0; dimension],
@@ -50,106 +49,127 @@ impl PSO {
             courses,
             fitness_calculator,
             parameters,
+            best_conflict_info: None,
         }
     }
     
-    pub async fn optimize(&mut self, window: &Window, run_info: Option<(usize, usize)>) -> Vec<f32> {
+    pub async fn optimize(
+        &mut self,
+        window: &Window,
+        run_info: Option<(usize, usize)>,
+        all_best_fitness: &mut Vec<f32>,
+        stop_flag: Arc<AtomicBool>,
+    ) -> (Vec<f32>, f32) {
         let start_time = Instant::now();
-        // let _ = window.emit("status-optimize", Status {
-        //     message: "mulai".to_string()
-        // });
-        self.initialize_swarm();
-        
         let courses = &self.courses;
         let params = &self.parameters;
         let (current_run, total_runs) = run_info.unwrap_or((0, 0));
-    
+
+        self.global_best_fitness = f32::INFINITY;
+        self.best_conflict_info = None;
+
+        // Inisialisasi awal: evaluasi semua partikel
+        for particle in &mut self.particles {
+            let fitness = Self::evaluate_position(&particle.position, courses, &self.fitness_calculator);
+            particle.fitness = fitness;
+            particle.pbest_fitness = fitness;
+            particle.pbest_position = particle.position.clone();
+
+            if fitness < self.global_best_fitness && !fitness.is_nan() {
+                self.global_best_fitness = fitness;
+                self.global_best_position = particle.position.clone();
+            }
+        }
+
         for iteration in 0..params.max_iterations {
-    
+
+            if stop_flag.load(Ordering::Relaxed) {
+                // Emit event jika ingin
+                break;
+            }
+
             for particle in &mut self.particles {
                 particle.update_velocity(
                     &self.global_best_position,
                     params.inertia_weight,
                     params.cognitive_weight,
                     params.social_weight,
-                    // params.velocity_clamp,
                 );
                 particle.update_position();
-    
-                let schedule: Vec<_> = Self::position_to_schedule(&particle.position, courses);
-                let (fitness, _) = self.fitness_calculator.calculate_fitness(&schedule);
-    
-                if fitness < particle.pbest_fitness {
+
+                let fitness = Self::evaluate_position(&particle.position, courses, &self.fitness_calculator);
+
+                particle.fitness = fitness;
+
+                if fitness < particle.pbest_fitness && !fitness.is_nan() {
                     particle.pbest_fitness = fitness;
                     particle.pbest_position = particle.position.clone();
                 }
-            }
-    
-            if let Some(best_particle) = self.particles.iter().min_by(|a, b| {
-                a.pbest_fitness.partial_cmp(&b.pbest_fitness).unwrap()
-            }) {
-                if best_particle.pbest_fitness < self.global_best_fitness {
-                    self.global_best_fitness = best_particle.pbest_fitness;
-                    self.global_best_position = best_particle.pbest_position.clone();
+
+                if particle.pbest_fitness < self.global_best_fitness && !particle.pbest_fitness.is_nan() {
+                    self.global_best_fitness = particle.pbest_fitness;
+                    self.global_best_position = particle.pbest_position.clone();
                 }
             }
-    
-            // let schedule = Self::position_to_schedule(&self.global_best_position, courses);
-            // let (_, current_conflicts) = self.fitness_calculator.calculate_fitness(&schedule);
 
+            // Emit progress setiap iterasi
             let _ = window.emit("optimization-progress", OptimizationProgress {
                 iteration: iteration + 1,
                 elapsed_time: start_time.elapsed(),
-                all_best_fitness: None,
+                all_best_fitness: Some(all_best_fitness.clone()),
                 best_fitness: self.global_best_fitness,
-                current_run: if run_info.is_some() { Some(current_run) } else { None },
-                total_runs: if run_info.is_some() { Some(total_runs) } else { None },
-                is_finished: current_run + 1 >= total_runs,
-                conflicts: ConflictInfo::default(),
+                current_run: Some(current_run),
+                total_runs: Some(total_runs),
+                is_finished: false,
             });
-        
         }
 
+        // Simpan nilai fitness terbaik
+        all_best_fitness.push(self.global_best_fitness);
+
+        // Emit hasil akhir
         let _ = window.emit("optimization-progress", OptimizationProgress {
             iteration: params.max_iterations,
             elapsed_time: start_time.elapsed(),
-            all_best_fitness: None,
+            all_best_fitness: Some(all_best_fitness.clone()),
             best_fitness: self.global_best_fitness,
-            current_run: if run_info.is_some() { Some(current_run) } else { None },
-            total_runs: if run_info.is_some() { Some(total_runs) } else { None },
+            current_run: Some(current_run),
+            total_runs: Some(total_runs),
             is_finished: true,
-            conflicts: ConflictInfo::default(),
         });
-    
-        self.global_best_position.clone()
-    }
-    
-    // Initialize all particles and find initial global best
-    fn initialize_swarm(&mut self) {
-        let courses = &self.courses;
-        let fitness_calculator = &self.fitness_calculator;
-        
-        for particle in &mut self.particles {
-            let schedule = Self::position_to_schedule(&particle.position, courses);
-            let (fitness, _) = fitness_calculator.calculate_fitness(&schedule);
-            
-            // Update personal best
-            if fitness < particle.pbest_fitness {
-                particle.pbest_fitness = fitness;
-                particle.pbest_position = particle.position.clone();
-            }
-            
-            // Update global best
-            if fitness < self.global_best_fitness {
-                self.global_best_fitness = fitness;
-                self.global_best_position = particle.position.clone();
-            }
-        }
+
+        (
+            self.global_best_position.clone(),
+            self.global_best_fitness,
+        )
     }
 
-  
+    pub fn evaluate_position(
+        position: &[f32],
+        courses: &[CourseRequest],
+        calculator: &FitnessCalculator,
+    ) -> f32 {
+        let schedule = Self::position_to_schedule(position, courses);
+        // for (i, course) in schedule.iter().enumerate() {
+        //     println!(
+        //         "[{}] Matkul: {}, Dosen: {}, Kelas: {}, Hari: {}, Jam: {}-{}, SKS: {}, Prodi: {}",
+        //         i + 1,
+        //         course.id_matkul,
+        //         course.id_dosen,
+        //         course.id_kelas,
+        //         course.hari,
+        //         course.jam_mulai,
+        //         course.jam_akhir,
+        //         course.sks,
+        //         course.prodi
+        //     );
+        // }
+        let fitness= calculator.calculate_fitness(&schedule);
 
-    pub fn position_to_schedule(
+        fitness
+    }
+    
+     pub fn position_to_schedule(
         position: &[f32],
         courses: &[CourseRequest],
     ) -> Vec<OptimizedCourse> {
@@ -214,23 +234,24 @@ impl PSO {
     
         for mut entries in grouped.into_values() {
             entries.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            let max_sks_per_day = if entries.len() == 4 { 3 } else { 6 };
             let mut sks_per_day = [0u32; 5];
             let mut current_day = 0;
-    
+
             for (_, urutan, mut course) in entries {
                 while current_day < 5 {
-                    if sks_per_day[current_day] + course.sks <= 6 {
+                    if sks_per_day[current_day] + course.sks <= max_sks_per_day {
                         course.hari = current_day as u32 + 1;
                         sks_per_day[current_day] += course.sks;
                         break;
                     }
                     current_day += 1;
                 }
-    
+
                 if course.hari == 0 {
                     course.hari = 5;
                 }
-    
+
                 scheduled_with_day.push((
                     (course.prodi, course.semester, course.id_kelas, course.id_waktu, course.hari),
                     urutan,
@@ -273,11 +294,5 @@ impl PSO {
     
         final_schedule
     }
-    
-    
-    // Method to evaluate best position
-    pub fn evaluate_best_position(&self) -> (f32, ConflictInfo) {
-        let schedule = Self::position_to_schedule(&self.global_best_position, &self.courses);
-        self.fitness_calculator.calculate_fitness(&schedule)
-    }
+
 }
