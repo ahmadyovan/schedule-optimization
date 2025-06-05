@@ -191,6 +191,14 @@ const App = () => {
 		}
 	};
 
+	function getAverage(arr: number[]): number {
+		if (arr.length === 0) return 0;
+
+		const sum = arr.reduce((total, num) => total + num, 0);
+		return sum / arr.length;
+	}
+
+
 	function formatElapsedTime(time?: ElapsedTime | null): string {
 		if (!time) return 'Belum tersedia';
 
@@ -333,17 +341,24 @@ const App = () => {
 					</div>
 				</div>
 				<div>
-					<h3>global best fitness pada setiap percobaan</h3>
+					<h3>Global best fitness pada setiap percobaan</h3>
 					<p>
-					{Array.isArray(progress.all_best_fitness) 
-						? progress.all_best_fitness.join(", ") 
+						{Array.isArray(progress.all_best_fitness)
+						? progress.all_best_fitness.join(", ")
 						: progress.all_best_fitness ?? ""}
+					</p>
+
+					<p>
+						Rata-rata:{" "}
+						{Array.isArray(progress.all_best_fitness)
+						? getAverage(progress.all_best_fitness).toFixed(2)
+						: "-"}
 					</p>
 				</div>
 			</div>
             <div className="flex justify-end pt-10">
 				<button onClick={() => onSaveClick(scheduleData)}>simpan</button>
-				<button onClick={() => {setIsOpen(true); setIsRunning(false)}}>mulai lagi</button>
+				<button disabled={!progress.is_finished} onClick={() => {setIsOpen(true); setIsRunning(false)}}>mulai lagi</button>
 				<button onClick={() => handleStop()}>Berhenti</button>
 				<button onClick={() => setIsRunning(false)}>kembali</button>
             </div>

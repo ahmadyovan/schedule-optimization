@@ -1,5 +1,14 @@
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
+
+#[derive(Debug, Clone)]
+pub struct Particle {
+    pub position: Vec<f32>,
+    pub velocity: Vec<f32>,
+    pub pbest_position: Vec<f32>,
+    pub pbest_fitness: f32,
+    pub fitness: f32,
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct CourseRequest {
@@ -46,6 +55,12 @@ pub struct TimePreferenceRequest {
     pub jumatMalam: bool,
 }
 
+#[derive(Debug, Clone)]
+
+pub struct FitnessCalculator {
+    pub time_preferences: HashMap<u32, TimePreferenceRequest>,
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct OptimizedCourse {
     pub id_jadwal: u32,
@@ -60,6 +75,16 @@ pub struct OptimizedCourse {
     pub semester: u32,
     pub sks: u32,
     pub prodi: u32,
+}
+
+pub struct PSO {
+    pub particles: Vec<Particle>,
+    pub global_best_position: Vec<f32>,
+    pub global_best_fitness: f32,
+    pub parameters: PsoParameters,
+    pub courses: Vec<CourseRequest>,
+    pub fitness_calculator: FitnessCalculator,
+    pub best_conflict_info: Option<ConflictInfo>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

@@ -2,8 +2,7 @@
 use serde_json::{json, Value};
 
 mod algorithms;
-use algorithms::optimizer::PSO;
-use algorithms::models::{ CourseRequest, OptimizedCourse, PsoParameters, TimePreferenceRequest};
+use algorithms::models::{ CourseRequest, OptimizedCourse, PSO, PsoParameters, TimePreferenceRequest};
 
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use tauri::State;

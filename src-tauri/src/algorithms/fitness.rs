@@ -2,13 +2,10 @@ use hashbrown::{HashMap};
 use super::models::{
     TimePreferenceRequest, 
     OptimizedCourse, 
+    FitnessCalculator
 };
 
 
-#[derive(Debug, Clone)]
-pub struct FitnessCalculator {
-    time_preferences: HashMap<u32, TimePreferenceRequest>,
-}
 
 impl FitnessCalculator {
     pub fn new(time_preferences: Vec<TimePreferenceRequest>) -> Self {
