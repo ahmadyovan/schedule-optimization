@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tokio = { version = "1", features = ["full"] }
 tauri-plugin-fs = "2.0"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
@@ -28,3 +29,5 @@ csv = "1.3.1"
 rayon = "1.10"
 hashbrown = "0.15.3"
 rand = "0.9.1"
+rust_xlsxwriter = "0.88.0"
+indicatif = "0.17"

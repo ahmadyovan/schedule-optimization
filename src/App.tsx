@@ -28,28 +28,28 @@ type ScheduleEntry = {
 };
 
 interface OptimizationResult {
-  all_best_fitness: number[];
-  conflicts: Record<string, any>; // Sesuaikan kalau tahu strukturnya
-  fitness: number;
-  schedule: ScheduleEntry[];
-  success: boolean;
+	all_best_fitness: number[];
+	conflicts: Record<string, any>; // Sesuaikan kalau tahu strukturnya
+	fitness: number;
+	schedule: ScheduleEntry[];
+	success: boolean;
 }
 
 
 
 type ElapsedTime = {
-  secs: number;
-  nanos: number;
+	secs: number;
+	nanos: number;
 };
 
 export type OptimizationProgress = {
-  all_best_fitness: number | null;
-  best_fitness: number;
-  current_run: number;
-  elapsed_time: ElapsedTime;
-  is_finished: boolean;
-  iteration: number;
-  total_runs: number | null;
+	all_best_fitness: number | null;
+	best_fitness: number;
+	current_run: number;
+	elapsed_time: ElapsedTime;
+	is_finished: boolean;
+	iteration: number;
+	total_runs: number | null;
 };
 
 const App = () => {
@@ -81,7 +81,6 @@ const App = () => {
 		iteration: 0,
 		total_runs: null,
 	});
-
 
 	useEffect(() => {
  		const unlistenPromise = listen<OptimizationProgress>('optimization-progress', (event) => {

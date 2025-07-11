@@ -1,11 +1,7 @@
-use hashbrown::{HashMap};
-use super::models::{
-    TimePreferenceRequest, 
-    OptimizedCourse, 
-    FitnessCalculator
-};
+use rayon::prelude::*;
+use std::collections::{HashSet};
 
-
+use super::models::{TimePreferenceRequest, OptimizedCourse, FitnessCalculator};
 
 impl FitnessCalculator {
     pub fn new(time_preferences: Vec<TimePreferenceRequest>) -> Self {
@@ -17,99 +13,44 @@ impl FitnessCalculator {
     }
 
     pub fn calculate_fitness(&self, schedule: &[OptimizedCourse]) -> f32 {
-        
-        let distribution_penalty = self.check_schedule_distribution(schedule);
         let conflict_penalty = self.detect_conflicts(schedule);
-        let pref_penalty = self.check_preferences(schedule);
-        
-        let total_penalty = conflict_penalty + distribution_penalty + pref_penalty;
+        let preference_penalty = self.check_preferences(schedule);
 
-                    
-        (total_penalty as f32)
+        (conflict_penalty + preference_penalty) as f32
     }
 
-    pub fn detect_conflicts(&self,schedule: &[OptimizedCourse]) -> u32 {
-        let mut total_penalty = 0;
-        let mut processed_pairs = std::collections::HashSet::new();
-    
-        for i in 0..schedule.len() {
-            for j in (i + 1)..schedule.len() {
-                let a = &schedule[i];
-                let b = &schedule[j];
-    
-                // Lewati jika hari berbeda
-                if a.hari != b.hari {
+    pub fn detect_conflicts(&self, schedule: &[OptimizedCourse]) -> u32 {
+        let mut penalty = 0;
+        let mut checked = HashSet::new();
+
+        for (i, a) in schedule.iter().enumerate() {
+            for b in &schedule[i + 1..] {
+                if a.hari != b.hari || !Self::is_overlap(a, b) {
                     continue;
                 }
-    
-                // Lewati jika tidak overlap
-                if !Self::is_overlap(a, b) {
-                    continue;
-                }
-    
-                // Cek apakah bentrok karena dosen atau ruangan + kelas
-                let same_ruangan_kelas = a.prodi == b.prodi && a.semester == b.semester && a.id_kelas == b.id_kelas;
+
+                let same_room_class = a.prodi == b.prodi && a.semester == b.semester && a.id_kelas == b.id_kelas;
                 let same_dosen = a.id_dosen == b.id_dosen;
-    
-                if same_ruangan_kelas || same_dosen {
-                    // Hindari duplikasi konflik
+
+                if same_room_class || same_dosen {
                     let key = (a.id_jadwal.min(b.id_jadwal), a.id_jadwal.max(b.id_jadwal));
-                    if processed_pairs.contains(&key) {
+                    if checked.contains(&key) {
                         continue;
                     }
-                    processed_pairs.insert(key);
-    
-                    total_penalty += 100;
+                    checked.insert(key);
+                    penalty += 100;
                 }
             }
         }
-    
-        (total_penalty)
-    }  
 
-
-    fn check_schedule_distribution(&self, schedule: &[OptimizedCourse]) -> u32 {
-        let mut counts = HashMap::new();   // (prodi, semester, id_waktu, hari) -> jumlah pelajaran
-        let mut sks_counts = HashMap::new(); // (id_waktu, ruangan, hari) -> total SKS
-    
-        for course in schedule {
-            let distrib_key = (course.prodi, course.semester, course.id_waktu, course.hari);
-            *counts.entry(distrib_key).or_insert(0) += 1;
-    
-            let sks_key = (course.id_waktu, course.prodi, course.semester, course.id_kelas, course.hari);
-            *sks_counts.entry(sks_key).or_insert(0) += course.sks;
-        }
-        let mut penalty = 0;   
-        // Cek distribusi tidak merata
-        let mut grouped = HashMap::new(); // (prodi, semester, id_waktu) -> Vec<count_per_day>
-    
-        for ((prodi, semester, waktu, _hari), count) in &counts {
-            grouped.entry((prodi, semester, waktu))
-                .or_insert(Vec::new())
-                .push(*count);
-        }
-
-        // Cek limit SKS
-        for ((_, _, _, _, _), total_sks) in sks_counts {
-            if total_sks > 6 {
-                let excess = total_sks - 6;
-                let current_penalty = 100 * excess;
-                penalty += current_penalty;
-            }
-        }
-    
         penalty
     }
 
+    pub fn check_preferences(&self, schedule: &[OptimizedCourse]) -> u32 {
+        schedule.par_iter()
+            .filter_map(|course| {
+                let pref = self.time_preferences.get(&course.id_dosen)?;
 
-    // Optimasi 5: Preference check dengan lookup table
-    fn check_preferences(&self, schedule: &[OptimizedCourse]) -> u32 {
-        let hari_map = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"];
-        let mut penalty = 0;
-        let mut messages = Vec::new();
-
-        for course in schedule {
-            if let Some(pref) = self.time_preferences.get(&course.id_dosen) {
                 let hari_idx = (course.hari - 1) as usize;
                 let waktu_ok = if course.jam_mulai < 1080 {
                     match hari_idx {
@@ -131,25 +72,17 @@ impl FitnessCalculator {
                     }
                 };
 
-                if !waktu_ok {
-                    penalty += 300;
-                    messages.push(format!(
-                        "Preferensi: Dosen {} tidak suka {} {} untuk jadwal {}",
-                        course.id_dosen,
-                        hari_map[hari_idx],
-                        if course.jam_mulai < 1080 { "Pagi" } else { "Malam" },
-                        course.id_jadwal
-                    ));
+                if waktu_ok {
+                    None
+                } else {
+                    Some(100)
                 }
-            }
-        }
-
-        penalty
+            })
+            .sum()
     }
 
     #[inline]
     fn is_overlap(a: &OptimizedCourse, b: &OptimizedCourse) -> bool {
         a.jam_mulai < b.jam_akhir && b.jam_mulai < a.jam_akhir
     }
-
 }

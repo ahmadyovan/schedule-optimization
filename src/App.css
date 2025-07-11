@@ -83,10 +83,7 @@ button {
 button:hover {
   border-color: #396cd8;
 }
-/* button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-} */
+
 
 input,
 button {

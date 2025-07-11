@@ -1,10 +1,10 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use serde_json::{json, Value};
 
-mod algorithms;
-use algorithms::models::{ CourseRequest, OptimizedCourse, PSO, PsoParameters, TimePreferenceRequest};
+pub mod algorithms;
+use algorithms::models::{ CourseRequest, OptimizedCourse, PSO, PsoParameters, ScheduleChecker, TimePreferenceRequest};
 
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::{f64, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}};
 use tauri::State;
 
 #[derive(Default)]
@@ -29,7 +29,7 @@ async fn process_pso(
 ) -> Result<Value, String> {
     let courses = parse_course_csv(&course_csv)?;
     let time_preferences = parse_preference_csv(&preference_csv)?;
-    let num_runs = params.num_runs.unwrap_or(1);
+    let num_runs: usize = params.num_runs.unwrap_or(1);
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     {
@@ -38,7 +38,7 @@ async fn process_pso(
     }
 
     let mut best_overall_schedule: Option<Vec<OptimizedCourse>> = None;
-    let mut best_overall_fitness = f32::INFINITY;
+    let mut best_overall_fitness = f64::INFINITY;
     let mut all_best_fitness = Vec::with_capacity(num_runs);
 
     for i in 0..num_runs {
@@ -49,7 +49,7 @@ async fn process_pso(
         );
 
         let (best_position, fitness) =
-            pso.optimize(&window, Some((i, num_runs)), &mut all_best_fitness, stop_flag.clone()).await;
+            pso.optimize(Some(&window), Some((i, num_runs)), &mut all_best_fitness, stop_flag.clone()).await;
 
         if stop_flag.load(Ordering::Relaxed) {
             break; // keluar dari loop jika dihentikan
@@ -63,11 +63,19 @@ async fn process_pso(
         }
     }
 
+    let conflicts = if let Some(ref schedule) = best_overall_schedule {
+        let checker = ScheduleChecker::new(time_preferences.clone());
+        checker.evaluate_messages(schedule)
+    } else {
+        (vec![], vec![]) // fallback kosong jika tidak ada jadwal
+    };
+
     let result = json!({
         "success": true,
         "fitness": best_overall_fitness,
         "all_best_fitness": all_best_fitness,
-        "schedule": best_overall_schedule
+        "schedule": best_overall_schedule,
+        "message": conflicts
     });
 
     Ok(result)
